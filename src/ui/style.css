@@ -1,0 +1,21 @@
+/* Ocultar apenas o botão de Menu padrão e footer, deixando o topo visível para a Sidebar funcionar */
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+
+/* Tipografia e cores predominantes de títulos */
+h1, h2, h3, h4, h5, h6 {
+    color: #66b3ff !important;
+}
+
+/* Botões de rádio na Sidebar de forma mais limpa */
+.stRadio > div {
+    background-color: #05080f;
+    border-radius: 8px;
+    padding: 10px;
+    border: 1px solid #004080;
+}
+
+hr {
+    border-color: #004080 !important;
+}
+
