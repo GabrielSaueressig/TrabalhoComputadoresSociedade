@@ -1,3 +1,5 @@
+import base64
+
 import streamlit as st
 
 # Configuração base da página
@@ -5,60 +7,134 @@ st.set_page_config(
     page_title="JuridicAI",
     page_icon="⚖️",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
-# Estilos customizados carregados de forma modular
+# Estilos customizados para remover espaços excessivos e ajustar layout
 with open("src/ui/style.css") as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
+st.markdown(
+    """
+    <style>
+        /* Reduz o espaço no topo da página do Streamlit */
+        .block-container {
+            padding-top: 1rem;
+            padding-bottom: 0rem;
+        }
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        header {visibility: hidden;}
+
+        /* Ajuste fino para o título */
+        .title-container {
+            margin-top: -20px;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # Layout Principal: Header e Logo
-col_logo, col_title = st.columns([1, 11])
+col_logo, col_title = st.columns([1, 15])
 with col_logo:
     st.markdown(
-        "<h1 style='color: #007BFF; font-size: 3rem;'>⚖️</h1>", unsafe_allow_html=True
+        "<h1 style='color: #007BFF; font-size: 2.5rem; margin-top: 0;'>⚖️</h1>",
+        unsafe_allow_html=True,
     )
 with col_title:
     st.markdown(
-        "<h1 style='margin-bottom: 0px;'>JuridicAI</h1>", unsafe_allow_html=True
+        "<h2 style='margin-bottom: 0px; margin-top: 5px;'>JuridicAI</h2>",
+        unsafe_allow_html=True,
     )
     st.markdown(
-        "<p style='font-size: 1.2rem; margin-top: -10px;'>Tradução inteligente de documentos jurídicos complexos.</p>",
+        "<p style='font-size: 1rem; margin-top: -10px; color: #888;'>Tradução inteligente de documentos jurídicos complexos.</p>",
         unsafe_allow_html=True,
     )
 
-st.markdown("---")
+st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
 
-# Sidebar estilizada
-with st.sidebar:
-    st.markdown("<h2 style='color: #007BFF;'>Navegação</h2>", unsafe_allow_html=True)
-    opcao = st.radio(
-        "",
-        ["📂 Adicionar Documentos", "💬 Assistente / Chat"],
+# Inicialização do estado para mensagens
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# Layout de Colunas: Esquerda (Documentos) | Direita (Chat)
+col_doc, col_chat = st.columns([1.1, 1])
+
+# Altura para o Chat (Mais comprido que o PDF para melhor experiência)
+CHAT_HEIGHT = 800
+PDF_HEIGHT = 700
+
+with col_doc:
+    st.markdown("### 📂 Documentos")
+    uploaded_files = st.file_uploader(
+        "Upload de PDFs",
+        type=["pdf"],
+        accept_multiple_files=True,
         label_visibility="collapsed",
     )
 
-# Área de Conteúdo
-if opcao == "📂 Adicionar Documentos":
-    st.markdown("### 📥 Nova Análise")
-    st.markdown(
-        "Arraste seus contratos, petições e processos para desmistificar o *juridiquês*."
+    if uploaded_files:
+        file_names = [f.name for f in uploaded_files]
+        selected_file_name = st.selectbox("Visualizando:", file_names)
+        selected_file = next(f for f in uploaded_files if f.name == selected_file_name)
+
+        base64_pdf = base64.b64encode(selected_file.read()).decode("utf-8")
+        selected_file.seek(0)
+
+        pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="{PDF_HEIGHT}px" style="border-radius: 8px; border: 1px solid #333;"></iframe>'
+        st.markdown(pdf_display, unsafe_allow_html=True)
+    else:
+        st.info("Carregue seus arquivos PDF para começar.")
+        st.image(
+            "https://img.freepik.com/free-vector/upload-concept-illustration_114360-1205.jpg",
+            width=280,
+        )
+
+with col_chat:
+    st.markdown("### 💬 Assistente")
+
+    # Container do Chat mais comprido
+    chat_container = st.container(height=CHAT_HEIGHT)
+
+    with chat_container:
+        if not st.session_state.messages:
+            st.chat_message("assistant").write(
+                "Olá! Sou o JuridicAI. Carregue seus documentos ao lado e eu te ajudarei a entender cada cláusula ou resumir o conteúdo."
+            )
+
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+    # Input de chat
+    input_disabled = not uploaded_files
+    placeholder_text = (
+        "Pergunte algo sobre os documentos..."
+        if uploaded_files
+        else "Envie um documento primeiro"
     )
 
-    with st.container():
-        uploaded_file = st.file_uploader("Upload de PDF", type=["pdf"])
-        if uploaded_file:
-            st.success("Documento carregado com sucesso! Pronto para análise.")
+    if user_input := st.chat_input(placeholder_text, disabled=input_disabled):
+        st.session_state.messages.append({"role": "user", "content": user_input})
+        with chat_container:
+            with st.chat_message("user"):
+                st.markdown(user_input)
 
-elif opcao == "💬 Assistente / Chat":
-    st.markdown("### 💬 Converse com o JuridicAI")
-    st.markdown("Tire dúvidas sobre os documentos enviados de forma simples e direta.")
+            with st.chat_message("assistant"):
+                if len(uploaded_files) > 1:
+                    response = "Analisando os múltiplos documentos carregados... Identifiquei os pontos chave para sua pergunta."
+                else:
+                    response = "Analisando o documento... Estou pronto para explicar os termos jurídicos para você."
 
-    # Mock visual de chat
-    with st.container():
-        st.info(
-            "👋 Olá! Sou o JuridicAI. Sobre qual cláusula ou documento você quer falar hoje?"
+                st.markdown(response)
+                st.session_state.messages.append(
+                    {"role": "assistant", "content": response}
+                )
+
+    if st.session_state.messages:
+        st.button(
+            "Limpar conversa",
+            on_click=lambda: st.session_state.update({"messages": []}),
+            type="secondary",
         )
-        user_input = st.chat_input("Digite sua dúvida aqui...")
-        if user_input:
-            st.warning("Função de chat será ativada em breve com LLM!")
