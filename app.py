@@ -2,6 +2,46 @@ import base64
 
 import streamlit as st
 
+import fitz
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+import os
+from dotenv import load_dotenv
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_google_genai import ChatGoogleGenerativeAI
+
+load_dotenv()
+
+#Transforma o pdf em uma string
+@st.cache_data
+def pdf_to_text(pdf):
+    pdf = fitz.open(filetype="pdf", stream=pdf)
+    text = []
+    for page in pdf:
+        text.append(page.get_text())
+
+    return "".join(text)
+
+#separa a string em pedaços menores de 1000 caracteres cada e retorna um documento com esse pedaço + o nome do documento
+def create_chunk(text, document_name):
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size = 1000,
+        chunk_overlap = 150
+    )
+    chunk = text_splitter.create_documents([text], metadatas=[{"source": document_name}])
+    return chunk
+
+#Cria os Embeddings utilizando a IA do google
+def create_vectors(chunks):
+    try:
+        embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")   
+        vector_store = FAISS.from_documents(chunks, embeddings)
+        return vector_store
+    except Exception as e:
+        st.error(f"Erro ao Criar Banco de Vetores: {e}")
+        return None
+
 # Configuração base da página
 st.set_page_config(
     page_title="JuridicAI",
@@ -75,12 +115,39 @@ with col_doc:
     )
 
     if uploaded_files:
+        #Guardando temporariamente os arquivos na cache
+        if "vector_db" not in st.session_state:
+            st.session_state.vector_db = None 
+        if "processed_arquives" not in st.session_state:
+            st.session_state.processed_arquives = []
+            
         file_names = [f.name for f in uploaded_files]
         selected_file_name = st.selectbox("Visualizando:", file_names)
         selected_file = next(f for f in uploaded_files if f.name == selected_file_name)
-
-        base64_pdf = base64.b64encode(selected_file.read()).decode("utf-8")
+        
+        #Salvando os bytes do pdf e mostrando na tela
+        pdf_bytes = selected_file.read()
         selected_file.seek(0)
+        base64_pdf = base64.b64encode(pdf_bytes).decode("utf-8")
+        
+        #Se ja nao estive na cache, le o texto, separa o chunk e salva na cache
+        if selected_file.name not in st.session_state.processed_arquives:
+            pdf_text = pdf_to_text(pdf_bytes)
+            st.session_state.processed_arquives.append(selected_file.name)
+
+            new_chunk = create_chunk(pdf_text, selected_file.name)
+            if "total_chunks" not in st.session_state:
+                st.session_state.total_chunks = []
+            st.session_state.total_chunks.extend(new_chunk)
+            st.session_state.needs_update = True
+        
+        #Verifica se Tem novas atualizações nos chuks, caso tenha usa a função pra criar o vetor de significancia e salva na cache
+        if st.session_state.get("needs_update", False) and st.session_state.total_chunks:
+            with st.spinner("Sincronizando base de dados"):
+                st.session_state.vector_db = create_vectors(st.session_state.total_chunks)
+            st.session_state.needs_update = False
+        
+            
 
         pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="{PDF_HEIGHT}px" style="border-radius: 8px; border: 1px solid #333;"></iframe>'
         st.markdown(pdf_display, unsafe_allow_html=True)
